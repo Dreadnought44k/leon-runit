@@ -1,0 +1,64 @@
+#!/bin/sh
+set -u 
+export PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
+
+msg() {
+        # bold
+	printf "\033[1m=> $@\033[m\n"
+}
+
+msg "Welcome to Gentoo!"
+msg "Where the code is compiled and upstream doesn't matter..."
+
+msg "mounting pseudo filesystems ..."
+mount -o nosuid,noexec,nodev        -t proc proc /proc
+mount -o nosuid,noexec,nodev        -t sysfs sys /sys
+mount -o size=100%,mode=755,noatime -t tmpfs tmpfs /run
+mount -o mode=0755,nosuid           -t devtmpfs dev /dev
+ln -s sda3 /dev/root
+
+mkdir -p -m0755 /dev/pts /dev/shm
+mkdir -p -m1777 /dev/mqueue
+mount -o noexec,nosuid,nodev -n -t mqueue mqueue /dev/mqueue
+mount -o mode=0620,gid=5,nosuid,noexec -n -t devpts devpts /dev/pts
+mount -o mode=1777,nosuid,nodev -n -t tmpfs shm /dev/shm
+
+msg "starting udev ..."
+/sbin/udevd --daemon
+udevadm trigger --action=add --type=subsystems
+udevadm trigger --action=add --type=devices
+#   udevadm settle
+
+msg "fscking ..."
+fsck -A -T -a -t noopts=_netdev
+msg "remouting root read-write ..."
+mount -o remount,rw /
+msg "mounting all other local filesystems ..."
+mount -a -t "nosysfs,nonfs,nonfs4,nosmbfs,nocifs" -O no_netdev
+
+msg "start networking"
+ip link set up dev lo
+
+msg "Setting your keymap"
+loadkeys -q -u br-abnt2
+
+msg "setting hostname"
+cat /etc/hostname > /proc/sys/kernel/hostname
+
+msg "enabling swap"
+swapon -a
+
+msg "Initializing random seed..."
+cp /var/lib/random-seed /dev/urandom >/dev/null 2>&1 || true
+( umask 077; bytes=$(cat /proc/sys/kernel/random/poolsize) || bytes=512; dd if=/dev/urandom of=/var/lib/random-seed count=1 bs=$bytes >/dev/null 2>&1 )
+
+msg "enabling sysctl"
+sysctl -q --system
+
+msg "enabling binfmt"
+/lib64/rc/sh/binfmt.sh
+
+touch /etc/runit/stopit
+chmod 0 /etc/runit/stopit
+
+msg "Initialization complete, running stage 2..."

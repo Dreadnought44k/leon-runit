@@ -1,0 +1,2 @@
+#!/bin/sh
+exec dhcpcd -B ${OPTS:=-M} 2>&1
